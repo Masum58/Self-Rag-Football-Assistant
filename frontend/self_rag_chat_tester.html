@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8" />
+<title>Self-RAG Chat Tester</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0f1115;
+    color: #e8e6e0;
+    min-height: 100vh;
+  }
+  ::selection { background: #1D9E75; color: white; }
+  input, button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+
+const { useState, useRef, useEffect } = React;
+
+const ACCENT = "#1D9E75"; // teal-ish green, football pitch inspired
+const ACCENT_DARK = "#0F6E56";
+
+function GradeBadge({ label, ok }) {
+  return (
+    <span style={{
+      fontSize: 12,
+      padding: "3px 10px",
+      borderRadius: 999,
+      background: ok ? "rgba(29,158,117,0.15)" : "rgba(226,75,74,0.15)",
+      color: ok ? "#5DCAA5" : "#F09595",
+      border: `0.5px solid ${ok ? "#0F6E56" : "#A32D2D"}`,
+      fontWeight: 500,
+      whiteSpace: "nowrap",
+    }}>
+      {ok ? "✓" : "✕"} {label}
+    </span>
+  );
+}
+
+function Message({ msg }) {
+  const isUser = msg.role === "user";
+  return (
+    <div style={{
+      display: "flex",
+      justifyContent: isUser ? "flex-end" : "flex-start",
+      marginBottom: 16,
+    }}>
+      <div style={{ maxWidth: "78%" }}>
+        <div style={{
+          background: isUser ? ACCENT_DARK : "#1c1f26",
+          color: isUser ? "#eafaf3" : "#e8e6e0",
+          padding: "10px 14px",
+          borderRadius: 14,
+          borderBottomRightRadius: isUser ? 4 : 14,
+          borderBottomLeftRadius: isUser ? 14 : 4,
+          fontSize: 15,
+          lineHeight: 1.55,
+          whiteSpace: "pre-wrap",
+        }}>
+          {msg.content}
+        </div>
+        {msg.grading && (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            <GradeBadge label="relevant" ok={msg.grading.documents_relevant} />
+            <GradeBadge label="grounded" ok={msg.grading.generation_grounded} />
+            <GradeBadge label="useful" ok={msg.grading.generation_useful} />
+          </div>
+        )}
+        {msg.error && (
+          <div style={{ marginTop: 6, fontSize: 13, color: "#F09595" }}>
+            {msg.error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:8000");
+  const [userId, setUserId] = useState("masum");
+  const [sessionId, setSessionId] = useState("session_" + Math.random().toString(36).slice(2, 8));
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [connected, setConnected] = useState(null); // null = unknown, true/false = checked
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const checkHealth = async () => {
+    try {
+      const res = await fetch(`${baseUrl}/health`);
+      setConnected(res.ok);
+    } catch {
+      setConnected(false);
+    }
+  };
+
+  useEffect(() => { checkHealth(); }, [baseUrl]);
+
+  const send = async () => {
+    const q = question.trim();
+    if (!q || loading) return;
+
+    setMessages(prev => [...prev, { role: "user", content: q }]);
+    setQuestion("");
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${baseUrl}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, session_id: sessionId, question: q }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Server ${res.status}: ${text.slice(0, 200)}`);
+      }
+
+      const data = await res.json();
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: data.answer,
+        grading: {
+          documents_relevant: data.documents_relevant,
+          generation_grounded: data.generation_grounded,
+          generation_useful: data.generation_useful,
+        },
+      }]);
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "উত্তর পাওয়া যায়নি।",
+        error: err.message,
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  };
+
+  const newSession = () => {
+    setSessionId("session_" + Math.random().toString(36).slice(2, 8));
+    setMessages([]);
+  };
+
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 16px 0", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: connected === null ? "#888" : connected ? ACCENT : "#E24B4A" }} />
+          <h1 style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>Self-RAG chat tester</h1>
+        </div>
+        <p style={{ fontSize: 13, color: "#8a8880", margin: "4px 0 0" }}>
+          {connected === null ? "সার্ভার চেক করা হচ্ছে..." : connected ? "সার্ভার কানেক্টেড" : "সার্ভার কানেক্ট হয়নি — uvicorn চালু আছে কিনা দেখুন"}
+        </p>
+      </div>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr 1fr",
+        gap: 8,
+        marginBottom: 16,
+        fontSize: 13,
+      }}>
+        <div>
+          <label style={{ display: "block", color: "#8a8880", marginBottom: 4 }}>Base URL</label>
+          <input value={baseUrl} onChange={e => setBaseUrl(e.target.value)}
+            style={{ width: "100%", padding: "6px 8px", background: "#1c1f26", border: "0.5px solid #333", borderRadius: 6, color: "#e8e6e0" }} />
+        </div>
+        <div>
+          <label style={{ display: "block", color: "#8a8880", marginBottom: 4 }}>User ID</label>
+          <input value={userId} onChange={e => setUserId(e.target.value)}
+            style={{ width: "100%", padding: "6px 8px", background: "#1c1f26", border: "0.5px solid #333", borderRadius: 6, color: "#e8e6e0" }} />
+        </div>
+        <div>
+          <label style={{ display: "block", color: "#8a8880", marginBottom: 4 }}>Session ID</label>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input value={sessionId} readOnly
+              style={{ width: "100%", padding: "6px 8px", background: "#1c1f26", border: "0.5px solid #333", borderRadius: 6, color: "#8a8880", fontSize: 12 }} />
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        flex: 1,
+        overflowY: "auto",
+        padding: "8px 4px",
+        marginBottom: 12,
+        minHeight: 300,
+      }}>
+        {messages.length === 0 && (
+          <div style={{ textAlign: "center", color: "#5a5852", marginTop: 60, fontSize: 14 }}>
+            একটা প্রশ্ন করুন, যেমন: "who has won the most world cups?"
+          </div>
+        )}
+        {messages.map((m, i) => <Message key={i} msg={m} />)}
+        {loading && (
+          <div style={{ fontSize: 13, color: "#8a8880", padding: "0 4px" }}>Self-RAG ভাবছে...</div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      <div style={{
+        position: "sticky",
+        bottom: 0,
+        background: "#0f1115",
+        paddingBottom: 20,
+        paddingTop: 8,
+        display: "flex",
+        gap: 8,
+      }}>
+        <input
+          value={question}
+          onChange={e => setQuestion(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="প্রশ্ন লিখুন..."
+          style={{
+            flex: 1,
+            padding: "10px 14px",
+            background: "#1c1f26",
+            border: "0.5px solid #333",
+            borderRadius: 10,
+            color: "#e8e6e0",
+            fontSize: 15,
+          }}
+        />
+        <button onClick={send} disabled={loading}
+          style={{
+            padding: "10px 20px",
+            background: ACCENT,
+            color: "#04342C",
+            fontWeight: 500,
+            border: "none",
+            borderRadius: 10,
+            cursor: loading ? "default" : "pointer",
+            opacity: loading ? 0.6 : 1,
+          }}>
+          পাঠান
+        </button>
+        <button onClick={newSession}
+          style={{
+            padding: "10px 16px",
+            background: "transparent",
+            color: "#8a8880",
+            border: "0.5px solid #333",
+            borderRadius: 10,
+            cursor: "pointer",
+          }}>
+          নতুন সেশন
+        </button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
