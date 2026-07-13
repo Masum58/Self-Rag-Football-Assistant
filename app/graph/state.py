@@ -19,7 +19,7 @@ generate...) এর হাত দিয়ে যায়। প্রতিট
 ঠিক করছি ট্রে-তে কী কী "স্লট" থাকবে।
 """
 
-from typing import TypedDict
+from typing import TypedDict, Optional
 
 
 class GraphState(TypedDict):
@@ -48,6 +48,10 @@ class GraphState(TypedDict):
     # relevant memory (long-term memory)।
     # Example: ["User's favorite football team is Brazil"]
 
+    # --- Routing ---
+    needs_retrieval: Optional[bool]
+    # সহজ ভাষায়: ইউজারের প্রশ্নটি কি শুধু casual chat নাকি কোনো factual information দরকার?
+
     # --- Retrieval (Pinecone থেকে) ---
     retrieved_docs: list[str]
     # সহজ ভাষায়: Pinecone থেকে retrieve করা document text গুলো।
@@ -59,18 +63,18 @@ class GraphState(TypedDict):
     # Example: ["France won the 2018 FIFA World Cup, defeating Croatia 4-2."]
 
     # --- Self-RAG grading ফলাফল ---
-    documents_relevant: bool
+    documents_relevant: Optional[bool]
     # সহজ ভাষায়: ISREL check এর ফলাফল — retrieved_docs আসলেই প্রশ্নের
     # সাথে relevant কিনা (grade_documents node এটা সেট করবে)।
 
     generation: str
     # সহজ ভাষায়: LLM এর তৈরি করা answer।
 
-    generation_grounded: bool
+    generation_grounded: Optional[bool]
     # সহজ ভাষায়: ISSUP check এর ফলাফল — generation টা আসলেই retrieved_docs
     # দিয়ে supported (hallucination না) কিনা।
 
-    generation_useful: bool
+    generation_useful: Optional[bool]
     # সহজ ভাষায়: ISUSE check এর ফলাফল — generation টা আসলেই প্রশ্নের
     # উত্তর দিয়েছে কিনা (নাকি topic থেকে সরে গেছে)।
 

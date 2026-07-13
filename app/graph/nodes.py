@@ -82,6 +82,39 @@ async def load_context(state: GraphState) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Node 0.5: route_query — Intent classification
+# ---------------------------------------------------------------------------
+
+async def route_query(state: GraphState) -> dict:
+    """
+    WHAT: Decides if the user's message needs external facts (retrieval) or
+          if it is just casual conversation / asks about the user themselves.
+    WHY: Running retrieval and web search for "hi" or "thanks" is slow and
+         causes hallucinations.
+    """
+    prompt = f"""You are a routing assistant for a Football Assistant chatbot.
+Analyze the user's message and decide if it requires searching an external knowledge base or the web for factual football information.
+
+Message: "{state['question']}"
+
+Rules:
+- If the message is casual chat (e.g., "hi", "wow great", "thanks", "hello") -> NO retrieval needed.
+- If the message asks about the user themselves or the conversation history (e.g., "what is my name?", "how do you know") -> NO retrieval needed (it will be answered from memory).
+- If the message asks a factual football question (e.g., "who won the world cup?") -> YES retrieval needed.
+
+Respond with ONLY a JSON object: {{"needs_retrieval": true}} or {{"needs_retrieval": false}}"""
+
+    response = await grading_llm.ainvoke(prompt)
+    try:
+        result = json.loads(response.content.strip())
+        needs_retrieval = result.get("needs_retrieval", True)
+    except:
+        needs_retrieval = True
+
+    return {"needs_retrieval": needs_retrieval}
+
+
+# ---------------------------------------------------------------------------
 # Node 1: retrieve — Pinecone থেকে ডকুমেন্ট খুঁজে আনা
 # ---------------------------------------------------------------------------
 
@@ -267,6 +300,14 @@ async def grade_generation(state: GraphState) -> dict:
 
     Latency ফিক্স: এই grading ও এখন দ্রুত মডেল (grading_llm) দিয়ে হচ্ছে।
     """
+    # Casual chat bypass: no need to grade "hi" or "thanks" against strict context
+    if state.get("needs_retrieval") is False:
+        return {
+            "generation_grounded": True,
+            "generation_useful": True,
+            "generation_retry_count": state.get("generation_retry_count", 0),
+        }
+
     docs_text = "\n".join(f"- {d}" for d in state["retrieved_docs"])
     memory_text = "\n".join(f"- {m}" for m in state.get("long_term_context", []))
     history_text = "\n".join(

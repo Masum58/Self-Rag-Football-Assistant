@@ -9,13 +9,14 @@ Built as a learning/portfolio project around football & World Cup trivia, but th
 ## ✨ Features
 
 - **Self-RAG core loop** — retrieve → grade relevance (ISREL) → generate → grade groundedness & usefulness (ISSUP/ISUSE), with automatic retries when a step fails its own quality check
+- **Smart Intent Routing** — a new `route_query` node acts as an intent classifier. It instantly routes casual chat or personal memory questions directly to generation, skipping expensive retrieval/search loops entirely to ensure speed and prevent hallucinations.
 - **Short-term memory** — Redis-backed conversation history per session (TTL-based auto-expiry)
 - **Long-term memory** — PostgreSQL + `pgvector`, using LangGraph's `AsyncPostgresStore` for semantic search over remembered facts (survives across sessions)
 - **Hybrid answering** — trusted sources (memory, chat history, retrieved docs) are tried first; live **web search (Tavily)** is used as a fallback; if nothing has the answer, the model uses general knowledge but **transparently labels it** as `[General Knowledge]`
 - **Document ingestion pipeline** — real `.txt` file loading + chunking (`RecursiveCharacterTextSplitter`) before embedding into Pinecone, not just hardcoded strings
 - **Production-minded API layer** — structured logging, graceful error handling (Redis/Postgres/LLM failures return clean HTTP errors instead of crashing), CORS-enabled for browser clients
 - **Latency-optimized** — a small/fast Groq model (`llama-3.1-8b-instant`) handles grading steps, while a larger model (`openai/gpt-oss-120b`) is reserved for final answer generation; parallelized memory reads; cached Pinecone index handle
-- **Simple test frontend** — a standalone HTML+React chat UI to manually exercise the API, showing live relevance/groundedness/usefulness badges per response
+- **Premium React Frontend** — a standalone HTML+React Single Page App (SPA) featuring a dark glassmorphism UI, markdown rendering, streaming typing animation, persistent local storage for multiple chat sessions, and live grading badges per response.
 
 ---
 
@@ -27,20 +28,24 @@ Built as a learning/portfolio project around football & World Cup trivia, but th
                          └───────┬───────┘
                                  ▼
                          ┌───────────────┐
-                    ┌────│   retrieve    │◄────┐
-                    │    └───────┬───────┘     │ retry
-                    │            ▼             │
-                    │    ┌───────────────┐     │
-                    │    │grade_documents│─────┘
-                    │    └───────┬───────┘
-                    │            │ relevant / retries exhausted
-                    │            ▼
-                    │    ┌───────────────┐
-                    └───►│  web_search   │  (Tavily fallback)
-                         └───────┬───────┘
-                                 ▼
-                         ┌───────────────┐
-                    ┌────│   generate    │◄────┐
+                         │  route_query  │──(Skip Retrieval)──┐
+                         └───────┬───────┘                    │
+                                 ▼                            │
+                         ┌───────────────┐                    │
+                    ┌────│   retrieve    │◄────┐              │
+                    │    └───────┬───────┘     │ retry        │
+                    │            ▼             │              │
+                    │    ┌───────────────┐     │              │
+                    │    │grade_documents│─────┘              │
+                    │    └───────┬───────┘                    │
+                    │            │ relevant / retries x       │
+                    │            ▼                            │
+                    │    ┌───────────────┐                    │
+                    └───►│  web_search   │                    │
+                         └───────┬───────┘                    │
+                                 ▼                            │
+                         ┌───────────────┐                    │
+                    ┌────│   generate    │◄───────────────────┘
                     │    └───────┬───────┘     │ retry
                     │            ▼             │
                     │    ┌────────────────┐    │
@@ -48,9 +53,9 @@ Built as a learning/portfolio project around football & World Cup trivia, but th
                     │    └───────┬────────┘
                     │            │ grounded + useful
                     │            ▼
-                    │    ┌─────────────────────┐
+                    │    ┌──────────────────────┐
                     │    │extract_and_save_facts│ (writes to long-term memory)
-                    │    └──────────┬──────────┘
+                    │    └──────────┬───────────┘
                     │               ▼
                     │        ┌───────────┐
                     └────────│ save_turn │ (writes to short-term memory)

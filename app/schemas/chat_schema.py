@@ -12,6 +12,7 @@ field থাকতে হবে (ChatRequest), আর আমরা response এ 
 (ChatResponse) সেটা এখানে ঠিক করা আছে।
 """
 
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -32,6 +33,6 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str = Field(..., description="Self-RAG graph এর চূড়ান্ত উত্তর")
-    documents_relevant: bool
-    generation_grounded: bool
-    generation_useful: bool
+    documents_relevant: Optional[bool] = None
+    generation_grounded: Optional[bool] = None
+    generation_useful: Optional[bool] = None

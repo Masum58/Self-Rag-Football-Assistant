@@ -23,6 +23,7 @@ from langgraph.graph import StateGraph, END
 from app.graph.state import GraphState
 from app.graph.nodes import (
     load_context,
+    route_query,
     retrieve,
     grade_documents,
     web_search,
@@ -39,6 +40,14 @@ from app.graph.nodes import (
 # Decision functions — এগুলো কোনো state বদলায় না, শুধু "পরে কোন node এ
 # যাবে" সেটা একটা string হিসেবে ফেরত দেয়। এগুলোই conditional edge এ ব্যবহার হবে।
 # ---------------------------------------------------------------------------
+
+def decide_after_route(state: GraphState) -> str:
+    """
+    WHAT: Decides whether to go to retrieval or skip straight to generation.
+    """
+    if state.get("needs_retrieval", True):
+        return "retrieve"
+    return "generate"
 
 def decide_after_grading_documents(state: GraphState) -> str:
     """
@@ -139,6 +148,7 @@ def build_graph():
 
     # --- Node গুলো যোগ করা ---
     graph.add_node("load_context", load_context)
+    graph.add_node("route_query", route_query)
     graph.add_node("retrieve", retrieve)
     graph.add_node("grade_documents", grade_documents)
     graph.add_node("web_search", web_search)
@@ -149,7 +159,7 @@ def build_graph():
 
     # --- সরল (unconditional) edge — সবসময় এই ক্রমেই চলবে ---
     graph.set_entry_point("load_context")
-    graph.add_edge("load_context", "retrieve")
+    graph.add_edge("load_context", "route_query")
     graph.add_edge("retrieve", "grade_documents")
     graph.add_edge("web_search", "generate")  # web search শেষ হলে generate এ যাও
     graph.add_edge("generate", "grade_generation")
@@ -157,6 +167,15 @@ def build_graph():
     graph.add_edge("save_turn", END)
 
     # --- Conditional edge — decision function অনুযায়ী branch হবে ---
+    graph.add_conditional_edges(
+        "route_query",
+        decide_after_route,
+        {
+            "retrieve": "retrieve",
+            "generate": "generate",
+        },
+    )
+
     graph.add_conditional_edges(
         "grade_documents",
         decide_after_grading_documents,
