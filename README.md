@@ -93,6 +93,7 @@ self-rag-fastapi/
 │   │   └── logging_config.py     # centralized logging setup
 │   ├── routers/
 │   │   ├── chat.py               # POST /chat
+│   │   ├── upload.py             # POST /upload (File ingestion)
 │   │   └── health.py             # GET /health
 │   ├── memory/
 │   │   ├── short_term.py         # Redis conversation history
@@ -187,6 +188,19 @@ Response:
   "documents_relevant": true,
   "generation_grounded": true,
   "generation_useful": true
+}
+```
+
+### `POST /upload`
+Accepts a `multipart/form-data` file upload (`.pdf`, `.csv`, `.txt`), saves it permanently to `app/data/sample_docs/`, chunks it, and upserts it to Pinecone immediately.
+
+Response:
+```json
+{
+  "status": "success",
+  "filename": "document.pdf",
+  "chunks_created": 15,
+  "message": "File successfully uploaded and 15 chunks ingested."
 }
 ```
 

@@ -932,9 +932,11 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
   const [isMobile,    setIsMobile   ] = useState(window.innerWidth <= 768);
   const [lastStreamId, setLastStreamId] = useState(null);
+  const [uploading,   setUploading  ] = useState(false);
 
   const bottomRef  = useRef(null);
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const activeSession = sessions.find(s => s.id === activeId);
   const messages = activeSession?.messages || [];
@@ -1069,6 +1071,55 @@ function App() {
     }
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const msgId = genId();
+    const tempMsg = {
+      id: msgId, role: 'assistant',
+      content: `Uploading and processing **${file.name}**...`,
+      timestamp: new Date().toISOString(),
+    };
+    mutSession(activeId, s => ({ ...s, messages: [...s.messages, tempMsg] }));
+
+    try {
+      const res = await fetch(`${baseUrl}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`HTTP ${res.status}: ${txt}`);
+      }
+      const data = await res.json();
+
+      mutSession(activeId, s => ({
+        ...s,
+        messages: s.messages.map(m => m.id === msgId ? {
+          ...m,
+          content: `✅ Successfully uploaded **${data.filename}** and added ${data.chunks_created} chunks to the knowledge base.`
+        } : m)
+      }));
+    } catch (err) {
+      mutSession(activeId, s => ({
+        ...s,
+        messages: s.messages.map(m => m.id === msgId ? {
+          ...m,
+          content: `❌ Upload failed for **${file.name}**.`,
+          error: err.message
+        } : m)
+      }));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
@@ -1176,6 +1227,21 @@ function App() {
           {/* Input */}
           <div className="input-zone">
             <div className="input-box">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileUpload} 
+                accept=".txt,.pdf,.csv" 
+                style={{display: 'none'}} 
+              />
+              <button 
+                className="send-btn" 
+                style={{ background: 'var(--bg-hover)', color: 'var(--text-muted)', marginRight: '6px' }}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || loading}
+                title="Upload file to knowledge base">
+                📎
+              </button>
               <textarea
                 id="chat-input"
                 ref={textareaRef}

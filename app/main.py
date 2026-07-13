@@ -46,8 +46,8 @@ from app.memory.long_term import init_store, close_store
 # init_store()  → memory store চালু করে, table বানায় (app চালুর সময়)
 # close_store() → memory store বন্ধ করে (app বন্ধের সময়)
 
-from app.routers import health, chat
-# ↑ সহজ ভাষায়: /health এর পাশাপাশি এখন /chat endpoint ও import করছি।
+from app.routers import health, chat, upload
+# ↑ সহজ ভাষায়: /health এর পাশাপাশি এখন /chat এবং /upload endpoint ও import করছি।
 
 
 @asynccontextmanager
@@ -101,8 +101,7 @@ app.add_middleware(
 # Example: browser এ http://127.0.0.1:8000/docs খুললে এই title-টাই দেখবেন।
 
 # Routers
-# Routers
 app.include_router(health.router)
 app.include_router(chat.router)
-# ↑ সহজ ভাষায়: /chat endpoint টাও এখন app-এর সাথে যুক্ত হলো।
-# Example: এখন POST http://127.0.0.1:8000/chat কল করলে Self-RAG graph চলবে।
+app.include_router(upload.router)
+# ↑ সহজ ভাষায়: /chat এবং /upload endpoint টাও এখন app-এর সাথে যুক্ত হলো।
